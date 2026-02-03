@@ -4,24 +4,51 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Whether to deploy up or down"
+        required: true
+        default: "up"
+        type: choice
+        options:
+          - up
+          - down
+      stack:
+        description: "The stack to deploy up or down. (Leave blank for default)"
+        default: ""
 
 jobs:
-  deploy:
-    environment: playground
+  defang:
+    name: Defang ${{ github.event.inputs.action || 'up' }} ${{
+      github.event.inputs.stack || 'default stack' }}
+    environment: production
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
 
-    steps:
-    - name: Checkout Repo
-      uses: actions/checkout@v4
+    concurrency:
+      cancel-in-progress: false
+      group: deploy-${{ github.event.inputs.stack || 'default' }}
 
-    - name: Deploy
-      uses: DefangLabs/defang-github-action@v1.1.3
-      with:
-        config-env-vars: DJANGO_SECRET_KEY POSTGRES_PASSWORD SSL_MODE
-      env:
-        DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
-        POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-        SSL_MODE: ${{ secrets.SSL_MODE }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Defang ${{ github.event.inputs.action || 'up' }} ${{
+          github.event.inputs.stack || 'default stack' }}
+        uses: DefangLabs/defang-github-action@v1.4.0
+        with:
+          command: ${{ github.event.inputs.action || 'up' }}
+          stack: ${{ github.event.inputs.stack || '' }}
+          config-vars-init-random: DJANGO_SECRET_KEY POSTGRES_PASSWORD
+        env:
+          DJANGO_SECRET_KEY: ${{ secrets.DJANGO_SECRET_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+
+      - name: Deployment Summary
+        uses: DefangLabs/defang-github-action@v1.4.0
+        with:
+          command: services
+          stack: ${{ github.event.inputs.stack || '' }}
